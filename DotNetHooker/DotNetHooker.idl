@@ -1,0 +1,46 @@
+// DotNetHooker.idl : IDL source for DotNetHooker
+//
+
+// This file will be processed by the MIDL tool to
+// produce the type library (DotNetHooker.tlb) and marshalling code.
+
+import "oaidl.idl";
+import "ocidl.idl";
+import "corprof.idl";
+
+
+
+
+[
+	object,
+	uuid(71153dbe-4bce-4d9a-a601-d0898da18b6e),
+	dual,
+	nonextensible,
+	pointer_default(unique)
+]
+interface IMyProfiler : ICorProfilerCallback2
+{
+};
+
+
+[
+	uuid(a7bc3ae9-619c-4155-a15c-1badfdd18bd1),
+	version(1.0),
+]
+library DotNetHookerLib
+{
+	importlib("stdole2.tlb");
+	
+	[
+		uuid(bd9083fc-ae69-4925-aab2-0ee90281e6de)
+	]
+	coclass MyProfiler
+	{
+		[default] interface IMyProfiler;
+		interface ICorProfilerCallback2;
+	};
+};
+
+import "shobjidl.idl";
+import "shobjidl.idl";
+import "shobjidl.idl";
