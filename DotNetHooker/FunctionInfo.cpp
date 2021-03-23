@@ -92,36 +92,54 @@ HRESULT FunctionInfo::ParseType(
     case ELEMENT_TYPE_VOID:
         return S_OK;
     case ELEMENT_TYPE_BOOLEAN:
+        ArgType = ArgumentType::DummyByte;
         return S_OK;
     case ELEMENT_TYPE_CHAR:
+        ArgType = ArgumentType::DummyWord;
         return S_OK;
     case ELEMENT_TYPE_I1:
+        ArgType = ArgumentType::DummyByte;
         return S_OK;
     case ELEMENT_TYPE_U1:
+        ArgType = ArgumentType::DummyByte;
         return S_OK;
     case ELEMENT_TYPE_I2:
+        ArgType = ArgumentType::DummyWord;
         return S_OK;
     case ELEMENT_TYPE_U2:
+        ArgType = ArgumentType::DummyWord;
         return S_OK;
     case ELEMENT_TYPE_I4:
+        ArgType = ArgumentType::DummyDword;
         return S_OK;
     case ELEMENT_TYPE_U4:
+        ArgType = ArgumentType::DummyDword;
         return S_OK;
     case ELEMENT_TYPE_I8:
+        ArgType = ArgumentType::DummyQword;
         return S_OK;
     case ELEMENT_TYPE_U8:
+        ArgType = ArgumentType::DummyQword;
         return S_OK;
     case ELEMENT_TYPE_R4:
+        ArgType = ArgumentType::DummyDword;
         return S_OK;
     case ELEMENT_TYPE_R8:
+        ArgType = ArgumentType::DummyQword;
         return S_OK;
     case ELEMENT_TYPE_STRING:
         ArgType = ArgumentType::String;
         return S_OK;
     case ELEMENT_TYPE_PTR:
-        return E_NOTIMPL;
     case ELEMENT_TYPE_BYREF:
-        return E_NOTIMPL;
+        ArgType = ArgumentType::DummyPtr;
+        if (Signature >= endSignature)
+        {
+            return E_INVALIDARG;
+        }
+
+        CorSigUncompressElementType(Signature);
+        return S_OK;
 
     // valuetype and class is identical for our purposes
     case ELEMENT_TYPE_VALUETYPE:
@@ -144,17 +162,18 @@ HRESULT FunctionInfo::ParseType(
     case ELEMENT_TYPE_TYPEDBYREF:
         return E_NOTIMPL;
     case ELEMENT_TYPE_I:
+        ArgType = ArgumentType::DummyDword;
         return S_OK;
     case ELEMENT_TYPE_U:
+        ArgType = ArgumentType::DummyDword;
         return S_OK;
     case ELEMENT_TYPE_FNPTR:
         return E_NOTIMPL;
     case ELEMENT_TYPE_OBJECT:
-        return E_NOTIMPL;
+        ArgType = ArgumentType::DummyPtr;
+        return S_OK;
     case ELEMENT_TYPE_SZARRAY:
     {
-
-
         if (Signature >= endSignature)
         {
             return E_INVALIDARG;

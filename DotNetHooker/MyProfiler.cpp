@@ -76,8 +76,9 @@ void CMyProfiler::OnEnter(
     LONG currentLineNumber = logFile.Log(finalLine);
 
     // TODO: replace find with filters
-    if (finalLine.find(L"WriteLine") != std::wstring::npos)
+    if (finalLine.find(L"MyWriteLine") != std::wstring::npos)
     {
+        __debugbreak();
         hres = DumpFunctionArguments(funcInfo, argumentInfo, currentLineNumber);
         if (FAILED(hres))
         {
@@ -196,8 +197,9 @@ UINT_PTR CMyProfiler::OnFunctionMap(
 
     // TODO: replace find with filters
     // so that user can decide which function's arguments will be dumped
-    if (fullmethodName.find(L"Console.WriteLine") != std::wstring::npos)
+    if (fullmethodName.find(L"MyWriteLine") != std::wstring::npos)
     {
+        __debugbreak();
         hres = funcInfo->ParseFunctionSignature(methodSignature, methodSignatureSize, profilerInfo, metaDataImport);
         metaDataImport->Release();
         if (FAILED(hres))
@@ -227,28 +229,36 @@ HRESULT CMyProfiler::DumpFunctionArguments(
 )
 {
     ULONG currentRangeIndex = 0;
-    bool switchToNextRange = true;
     PBYTE currentArgumentPointer = nullptr;
     PBYTE currentRangeEnd = nullptr;
-    DWORD argumentIndex = 1;
+    DWORD argumentIndex = 0;
     for (const auto& parser : FunctionInfo->GetArgumentParsers())
     {
-        if (switchToNextRange)
+        argumentIndex++;
+        if (currentArgumentPointer >= currentRangeEnd)
         {
+            // first iteration or we are at the end of a range.
             if (currentRangeIndex >= ArgumentInfo->numRanges)
             {
                 logFile.LogError(L"<outside of argument range>", 0x0);
+                return E_INVALIDARG;
             }
 
             currentArgumentPointer = (PBYTE)ArgumentInfo->ranges[currentRangeIndex].startAddress;
             currentRangeEnd = currentArgumentPointer + ArgumentInfo->ranges[currentRangeIndex].length;
-            switchToNextRange = false;
             currentRangeIndex++;
         }
 
 
         PARSED_ARGUMENT parsedArgument = { 0 };
         HRESULT hres = parser->ParseArgument(currentArgumentPointer, currentRangeEnd, parsedArgument);
+
+        if (hres == E_NOTIMPL)
+        {
+            // dummy parsers return this, not need to log error.
+            continue;
+        }
+
         if (FAILED(hres))
         {
             logFile.LogError(L"ParseArgument", hres);
@@ -261,16 +271,9 @@ HRESULT CMyProfiler::DumpFunctionArguments(
         hres = LogFile::DumpDataToFile(fileNameStr.c_str(), parsedArgument.DataStart, parsedArgument.DataSize);
         if (FAILED(hres))
         {
-            logFile.Log(L"DumpDataToFile failed");
+            logFile.LogError(L"DumpDataToFile", hres);
             continue;
         }
-
-        argumentIndex++;
-        if (currentArgumentPointer >= currentRangeEnd)
-        {
-            switchToNextRange = true;
-        }
-
     }
 
     return S_OK;

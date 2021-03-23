@@ -11,7 +11,14 @@ enum class ArgumentType
     String = 1,                 // System.String
     ByteArray = 2,              // byte[]
     Class = 3,                  // any Class, except Object, argument extractor can use ICorProfilerInfo::GetClassFromObject to get classId
-    Max = Class,                // entries above this are invalid
+
+    DummyPtr = 4,
+    DummyByte = 5,
+    DummyWord = 6,
+    DummyDword = 7,
+    DummyQword = 8,
+
+    Max = DummyQword,                // entries above this are invalid
 };
 
 typedef struct _PARSED_ARGUMENT
@@ -37,7 +44,6 @@ public:
 };
 
 
-
 class StringArgumentParser : public IArgumentParser
 {
 public:
@@ -52,6 +58,126 @@ private:
     ULONG strBufSizeOffset = 0;
     ULONG strLengthOffset = 0;
     ULONG strBufferOffset = 0;
+};
+
+class ByteArrayArgumentParser : public IArgumentParser
+{
+public:
+    ByteArrayArgumentParser(_In_ ICorProfilerInfo2* ProfilerInfo);
+    ~ByteArrayArgumentParser();
+
+    HRESULT ParseArgument(
+        _In_ PBYTE& ArgumentDataStart,
+        _In_ PBYTE ArgumentDataEnd,
+        _Out_ PARSED_ARGUMENT& ParsedArgument
+    ) override;
+private:
+    ICorProfilerInfo2* profilerInfo;
+};
+
+class PointerSizeDummyParser : public IArgumentParser
+{
+public:
+    PointerSizeDummyParser(_In_ ICorProfilerInfo2*) {}
+
+    HRESULT ParseArgument(
+        _In_ PBYTE& ArgumentDataStart,
+        _In_ PBYTE ArgumentDataEnd,
+        _Out_ PARSED_ARGUMENT&
+    ) override
+    {
+        if (ArgumentDataStart + sizeof(PVOID) > ArgumentDataEnd)
+        {
+            return E_NOT_SUFFICIENT_BUFFER;
+        }
+
+        ArgumentDataStart += sizeof(PVOID);
+        return E_NOTIMPL;
+    }
+};
+
+class ByteSizeDummyParser : public IArgumentParser
+{
+public:
+    ByteSizeDummyParser(_In_ ICorProfilerInfo2*) {}
+
+    HRESULT ParseArgument(
+        _In_ PBYTE& ArgumentDataStart,
+        _In_ PBYTE ArgumentDataEnd,
+        _Out_ PARSED_ARGUMENT&
+    ) override
+    {
+        if (ArgumentDataStart + sizeof(BYTE) > ArgumentDataEnd)
+        {
+            return E_NOT_SUFFICIENT_BUFFER;
+        }
+
+        ArgumentDataStart += sizeof(BYTE);
+        return E_NOTIMPL;
+    }
+};
+
+class WordSizeDummyParser : public IArgumentParser
+{
+public:
+    WordSizeDummyParser(_In_ ICorProfilerInfo2*) {}
+
+    HRESULT ParseArgument(
+        _In_ PBYTE& ArgumentDataStart,
+        _In_ PBYTE ArgumentDataEnd,
+        _Out_ PARSED_ARGUMENT&
+    ) override
+    {
+        if (ArgumentDataStart + sizeof(WORD) > ArgumentDataEnd)
+        {
+            return E_NOT_SUFFICIENT_BUFFER;
+        }
+
+        ArgumentDataStart += sizeof(WORD);
+        return E_NOTIMPL;
+    }
+};
+
+class DwordSizeDummyParser : public IArgumentParser
+{
+public:
+    DwordSizeDummyParser(_In_ ICorProfilerInfo2*) {}
+
+    HRESULT ParseArgument(
+        _In_ PBYTE& ArgumentDataStart,
+        _In_ PBYTE ArgumentDataEnd,
+        _Out_ PARSED_ARGUMENT&
+    ) override
+    {
+        if (ArgumentDataStart + sizeof(DWORD) > ArgumentDataEnd)
+        {
+            return E_NOT_SUFFICIENT_BUFFER;
+        }
+
+        ArgumentDataStart += sizeof(DWORD);
+        return E_NOTIMPL;
+    }
+};
+
+class QwordSizeDummyParser : public IArgumentParser
+{
+public:
+    QwordSizeDummyParser(_In_ ICorProfilerInfo2*) {}
+
+    HRESULT ParseArgument(
+        _In_ PBYTE& ArgumentDataStart,
+        _In_ PBYTE ArgumentDataEnd,
+        _Out_ PARSED_ARGUMENT&
+    ) override
+    {
+        if (ArgumentDataStart + sizeof(LARGE_INTEGER) > ArgumentDataEnd)
+        {
+            return E_NOT_SUFFICIENT_BUFFER;
+        }
+
+        ArgumentDataStart += sizeof(LARGE_INTEGER);
+        return E_NOTIMPL;
+    }
 };
 
 #endif // !_ARGUMENT_PARSERS_H_
