@@ -1,12 +1,16 @@
 // MyProfiler.h : Declaration of the CMyProfiler
 
 #pragma once
+
 #include "resource.h"       // main symbols
 #include <map>
+#include <vector>
 #include <shared_mutex>
 
 
 #include "DotNetHooker_i.h"
+#include "FunctionInfo.h"
+#include "LogFile.h"
 
 
 #ifdef _WIN32_WCE
@@ -345,16 +349,22 @@ END_COM_MAP()
     );
 
 private:
+    HRESULT DumpFunctionArguments(
+        _In_ const std::shared_ptr<FunctionInfo> FunctionInfo,
+        _In_ COR_PRF_FUNCTION_ARGUMENT_INFO* ArgumentInfo,
+        _In_ LONG CurrentLineNumber
+    );
+
     HRESULT ResolveClassName(
         _In_ ClassID ClassId,
         _Out_ std::wstring& ClassName
     );
 
     UINT_PTR AddFunctionName(
-        _In_ const std::wstring& FunctionName
+        _In_ const std::shared_ptr<FunctionInfo>& FunctionName
     );
 
-    std::wstring GetFunctionById(
+    std::shared_ptr<FunctionInfo> GetFunctionById(
         _In_ UINT_PTR FunctionId
     );
 
@@ -368,14 +378,15 @@ private:
     );
 
     ICorProfilerInfo2* profilerInfo = nullptr;
-    HANDLE logHandle = INVALID_HANDLE_VALUE;
     
     mutable std::shared_mutex functionMapLock;
     UINT_PTR currentFunctionId = 0;
-    std::map<UINT_PTR, std::wstring> functionIdToName;
+    std::map<UINT_PTR, std::shared_ptr<FunctionInfo>> functionIdToInfo;
 
     mutable std::shared_mutex classMapLock;
     std::map<ClassID, std::wstring> classIdToName;
+
+    LogFile logFile;
 };
 
 OBJECT_ENTRY_AUTO(__uuidof(MyProfiler), CMyProfiler)

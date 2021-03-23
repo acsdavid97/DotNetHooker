@@ -9,12 +9,18 @@ write function calls to a file:
     for each line the function name, thread id, and depth (via indentation) should be stored
     when more than 1024 such a lines are accumulated, or when the app exists, flush the lines to the log file
 DONE: basic file write
-TODO: TLS, batch writes
 
 try to get arguments of a function:
     most basic use case is dumping the assemblies loaded via System.Reflection.Assembly Load (byte[] rawAssembly);
         https://docs.microsoft.com/en-us/dotnet/api/system.reflection.assembly.load?view=net-5.0#System_Reflection_Assembly_Load_System_Byte___
+mostly done:
+    - need dummy argument parsers for every basic type to advance the current argument pointer correctly.
+
+support x86 as well by creating trampolines in x86 asm
 
 idea:
-    try to implement logging levels:
+    try to implement filters (include and exclude)
     for example ignoring .ctors and methods starting with get_ and set_
+
+code cleanup:
+    remove all throw exceptions and replace them with statuses or log error

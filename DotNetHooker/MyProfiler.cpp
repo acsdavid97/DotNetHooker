@@ -6,6 +6,7 @@
 #include <string>
 #include <windows.h>
 
+
 CMyProfiler* gMyProfiler = nullptr;
 
 
@@ -29,7 +30,6 @@ void CMyProfiler::OnEnter(
     _In_ COR_PRF_FUNCTION_ARGUMENT_INFO* argumentInfo
 )
 {
-    UNREFERENCED_PARAMETER(argumentInfo);
     UNREFERENCED_PARAMETER(func);
     UNREFERENCED_PARAMETER(funcId);
 
@@ -45,8 +45,7 @@ void CMyProfiler::OnEnter(
     HRESULT hres = profilerInfo->GetCurrentThreadID(&threadId);
     if (FAILED(hres))
     {
-        // threads should be managed that execute functions should never return CORPROF_E_NOT_MANAGED_THREAD
-        // really Microsoft?
+        // threads should be managed that execute functions. should never return CORPROF_E_NOT_MANAGED_THREAD
         __debugbreak();
         return;
     }
@@ -58,9 +57,9 @@ void CMyProfiler::OnEnter(
         lineToWrite << L" ";
     }
 
-    const std::wstring functionName = GetFunctionById(clientData);
+    std::shared_ptr<FunctionInfo> funcInfo = GetFunctionById(clientData);
 
-    lineToWrite << functionName;
+    lineToWrite << funcInfo->GetFunctionName();
     if (gCurrentThreadTailCall)
     {
         lineToWrite << L" (Tail called from prev)";
@@ -72,26 +71,21 @@ void CMyProfiler::OnEnter(
         gCurrentThreadFunctionCallDepth++;
     }
 
-    lineToWrite << L"\n";
-
-    if (functionName.find(L"SomethingMethod") != std::wstring::npos)
-    {
-        ULONG strBufSizeOffset = 0;
-        ULONG strLengthOffset = 0;
-        ULONG strBufferOffset = 0;
-        profilerInfo->GetStringLayout(&strBufSizeOffset, &strLengthOffset, &strBufferOffset);
-
-        // TODO: read string from args 
-        __debugbreak();
-    }
-
     std::wstring finalLine = lineToWrite.str();
 
-    DWORD sizeToWrite = (DWORD)finalLine.length() * sizeof(WCHAR);
-    DWORD bytesWritten = 0;
-    // TODO: improve perf by not writing to file on every function call,
-    // instead write in batches, e.g. after 1000 function calls.
-    WriteFile(logHandle, finalLine.c_str(), sizeToWrite, &bytesWritten, nullptr);
+    LONG currentLineNumber = logFile.Log(finalLine);
+
+    // TODO: replace find with filters
+    if (finalLine.find(L"WriteLine") != std::wstring::npos)
+    {
+        hres = DumpFunctionArguments(funcInfo, argumentInfo, currentLineNumber);
+        if (FAILED(hres))
+        {
+            logFile.LogError(L"DumpFunctionArguments", hres);
+        }
+        
+    }
+    
 }
 
 extern "C" void __stdcall FunctionLeaveHook(
@@ -178,16 +172,19 @@ UINT_PTR CMyProfiler::OnFunctionMap(
     mdTypeDef classType = 0;
     WCHAR methodNameBuf[METHOD_NAME_MAX_SIZE];
     ULONG realMethodNameSize = 0;
-    hres = metaDataImport->GetMethodProps(metadataToken, &classType, methodNameBuf, METHOD_NAME_MAX_SIZE, &realMethodNameSize, nullptr, nullptr, nullptr, nullptr, nullptr);
-    metaDataImport->Release();
+    PCCOR_SIGNATURE methodSignature = nullptr;
+    ULONG methodSignatureSize = 0;
+    hres = metaDataImport->GetMethodProps(metadataToken, &classType, methodNameBuf, METHOD_NAME_MAX_SIZE, &realMethodNameSize, nullptr, &methodSignature, &methodSignatureSize, nullptr, nullptr);
     if (FAILED(hres))
     {
+        metaDataImport->Release();
         return 0;
     }
 
     if (METHOD_NAME_MAX_SIZE < realMethodNameSize)
     {
         // array too small should realloc
+        metaDataImport->Release();
         return 0;
     }
 
@@ -195,35 +192,113 @@ UINT_PTR CMyProfiler::OnFunctionMap(
     fullmethodName += L".";
     fullmethodName += methodNameBuf;
 
+    auto funcInfo = std::make_shared<FunctionInfo>(fullmethodName);
+
+    // TODO: replace find with filters
+    // so that user can decide which function's arguments will be dumped
+    if (fullmethodName.find(L"Console.WriteLine") != std::wstring::npos)
+    {
+        hres = funcInfo->ParseFunctionSignature(methodSignature, methodSignatureSize, profilerInfo, metaDataImport);
+        metaDataImport->Release();
+        if (FAILED(hres))
+        {
+            return 0;
+        }
+    }
+    else
+    {
+        metaDataImport->Release();
+    }
+
     // all good, we will monitor the function
     *pbHookFunction = true;
 
-    return AddFunctionName(fullmethodName);
+    // BUG: for same funcionID different mapping is returned, in case OnFunctionMap is called from different threads.
+    // Profilers should be tolerant of cases where multiple threads of a profiled application are calling the same method / function simultaneously.In such cases, the profiler may receive multiple FunctionIDMapper callbacks for the same FunctionID.The profiler should be certain to return the same values from this callback when it is called multiple times with the same FunctionID.
+    // https://docs.microsoft.com/en-us/previous-versions/dotnet/netframework-4.0/aa964957(v=vs.100)
+
+    return AddFunctionName(funcInfo);
+}
+
+HRESULT CMyProfiler::DumpFunctionArguments(
+    _In_ const std::shared_ptr<FunctionInfo> FunctionInfo,
+    _In_ COR_PRF_FUNCTION_ARGUMENT_INFO* ArgumentInfo,
+    _In_ LONG CurrentLineNumber
+)
+{
+    ULONG currentRangeIndex = 0;
+    bool switchToNextRange = true;
+    PBYTE currentArgumentPointer = nullptr;
+    PBYTE currentRangeEnd = nullptr;
+    DWORD argumentIndex = 1;
+    for (const auto& parser : FunctionInfo->GetArgumentParsers())
+    {
+        if (switchToNextRange)
+        {
+            if (currentRangeIndex >= ArgumentInfo->numRanges)
+            {
+                logFile.LogError(L"<outside of argument range>", 0x0);
+            }
+
+            currentArgumentPointer = (PBYTE)ArgumentInfo->ranges[currentRangeIndex].startAddress;
+            currentRangeEnd = currentArgumentPointer + ArgumentInfo->ranges[currentRangeIndex].length;
+            switchToNextRange = false;
+            currentRangeIndex++;
+        }
+
+
+        PARSED_ARGUMENT parsedArgument = { 0 };
+        HRESULT hres = parser->ParseArgument(currentArgumentPointer, currentRangeEnd, parsedArgument);
+        if (FAILED(hres))
+        {
+            logFile.LogError(L"ParseArgument", hres);
+            continue;
+        }
+
+        std::wstringstream fileName;
+        fileName << CurrentLineNumber << L"_" << argumentIndex;
+        std::wstring fileNameStr = fileName.str();
+        hres = LogFile::DumpDataToFile(fileNameStr.c_str(), parsedArgument.DataStart, parsedArgument.DataSize);
+        if (FAILED(hres))
+        {
+            logFile.Log(L"DumpDataToFile failed");
+            continue;
+        }
+
+        argumentIndex++;
+        if (currentArgumentPointer >= currentRangeEnd)
+        {
+            switchToNextRange = true;
+        }
+
+    }
+
+    return S_OK;
 }
 
 UINT_PTR CMyProfiler::AddFunctionName(
-    _In_ const std::wstring& FunctionName
+    _In_ const std::shared_ptr<FunctionInfo>& FunctionInfo
 )
 {
     std::unique_lock<std::shared_mutex> lock(functionMapLock);
     currentFunctionId++;
-    functionIdToName[currentFunctionId] = FunctionName;
+    functionIdToInfo[currentFunctionId] = FunctionInfo;
 
     return currentFunctionId;
 }
 
-std::wstring CMyProfiler::GetFunctionById(
+std::shared_ptr<FunctionInfo> CMyProfiler::GetFunctionById(
     _In_ UINT_PTR FunctionId
 )
 {
     std::shared_lock<std::shared_mutex> lck(functionMapLock);
-    auto result = functionIdToName.find(FunctionId);
-    if (result == functionIdToName.end())
+    auto result = functionIdToInfo.find(FunctionId);
+    if (result == functionIdToInfo.end())
     {
         // function name not resolved, yet marked as monitored by OnFunctionMap
         // should never happen.
         __debugbreak();
-        return std::wstring(L"<NOT_FOUND_FUNCTION>");
+        throw std::runtime_error("invalid function ID");
     }
 
     return result->second;
@@ -302,25 +377,19 @@ HRESULT STDMETHODCALLTYPE CMyProfiler::Initialize(
 {
     gMyProfiler = this;
 
-    logHandle = CreateFileW(L"DotNetHooker.log",
-        GENERIC_WRITE,
-        FILE_SHARE_DELETE | FILE_SHARE_READ,
-        nullptr,
-        CREATE_ALWAYS,
-        FILE_ATTRIBUTE_NORMAL,
-        nullptr);
-    if (logHandle == INVALID_HANDLE_VALUE)
-    {
-        return HRESULT_FROM_WIN32(GetLastError());
-    }
-
-    HRESULT hres = pICorProfilerInfoUnk->QueryInterface(&profilerInfo);
+    HRESULT hres = logFile.StartLog(L"DotNetHooker.log");
     if (FAILED(hres))
     {
         return hres;
     }
 
-    hres = profilerInfo->SetEventMask(COR_PRF_MONITOR_ENTERLEAVE | COR_PRF_ENABLE_FUNCTION_ARGS | COR_PRF_ENABLE_FUNCTION_RETVAL | COR_PRF_MONITOR_CLASS_LOADS | COR_PRF_ENABLE_FRAME_INFO);
+    hres = pICorProfilerInfoUnk->QueryInterface(&profilerInfo);
+    if (FAILED(hres))
+    {
+        return hres;
+    }
+
+    hres = profilerInfo->SetEventMask(COR_PRF_MONITOR_ENTERLEAVE | COR_PRF_ENABLE_FUNCTION_ARGS | COR_PRF_MONITOR_CLASS_LOADS);
     if (FAILED(hres))
     {
         profilerInfo->Release();
@@ -348,10 +417,7 @@ HRESULT STDMETHODCALLTYPE CMyProfiler::Shutdown(void)
 {
     profilerInfo->Release();
 
-    if (logHandle != INVALID_HANDLE_VALUE)
-    {
-        CloseHandle(logHandle);
-    }
+    logFile.FlushLog();
 
     return S_OK;
 };
