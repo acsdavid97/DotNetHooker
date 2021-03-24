@@ -1,21 +1,3 @@
-get function name in functionID mapper:
-    write functionID mapper, it should assign numbers from 1 to 2^64 for functions
-        for each new function create a string that holds it's fully qualified name
-        store id to name correspondence in std::map
-DONE
-
-write function calls to a file:
-    each thread will have a TLS value, which is incremented on function enter and decremented on function leave
-    for each line the function name, thread id, and depth (via indentation) should be stored
-    when more than 1024 such a lines are accumulated, or when the app exists, flush the lines to the log file
-DONE: basic file write
-
-try to get arguments of a function:
-    most basic use case is dumping the assemblies loaded via System.Reflection.Assembly Load (byte[] rawAssembly);
-        https://docs.microsoft.com/en-us/dotnet/api/system.reflection.assembly.load?view=net-5.0#System_Reflection_Assembly_Load_System_Byte___
-mostly done:
-    - need dummy argument parsers for every basic type to advance the current argument pointer correctly.
-
 support x86 as well by creating trampolines in x86 asm
 
 idea:

@@ -76,9 +76,8 @@ void CMyProfiler::OnEnter(
     LONG currentLineNumber = logFile.Log(finalLine);
 
     // TODO: replace find with filters
-    if (finalLine.find(L"MyWriteLine") != std::wstring::npos)
+    if (finalLine.find(L"Assembly.Load") != std::wstring::npos)
     {
-        __debugbreak();
         hres = DumpFunctionArguments(funcInfo, argumentInfo, currentLineNumber);
         if (FAILED(hres))
         {
@@ -197,9 +196,8 @@ UINT_PTR CMyProfiler::OnFunctionMap(
 
     // TODO: replace find with filters
     // so that user can decide which function's arguments will be dumped
-    if (fullmethodName.find(L"MyWriteLine") != std::wstring::npos)
+    if (fullmethodName.find(L"Assembly.Load") != std::wstring::npos)
     {
-        __debugbreak();
         hres = funcInfo->ParseFunctionSignature(methodSignature, methodSignatureSize, profilerInfo, metaDataImport);
         metaDataImport->Release();
         if (FAILED(hres))
@@ -323,8 +321,6 @@ std::wstring CMyProfiler::GetClassNameById(
     auto result = classIdToName.find(ClassId);
     if (result == classIdToName.end())
     {
-        // should never happen.
-        __debugbreak();
         return std::wstring(L"<NOT_FOUND_CLASS>");
     }
 
