@@ -188,6 +188,9 @@
       <RegisterOutput>true</RegisterOutput>
       <PerUserRedirection>true</PerUserRedirection>
     </Link>
+    <MASM>
+      <UseSafeExceptionHandlers>true</UseSafeExceptionHandlers>
+    </MASM>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -230,6 +233,7 @@
     <ClInclude Include="DotNetHooker_i.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="FunctionInfo.h" />
+    <ClInclude Include="DummyProfiler.h" />
     <ClInclude Include="LogFile.h" />
     <ClInclude Include="MyProfiler.h" />
     <ClInclude Include="pch.h" />
@@ -268,6 +272,7 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
       </PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="DummyProfiler.cpp" />
     <ClCompile Include="FunctionInfo.cpp" />
     <ClCompile Include="LogFile.cpp" />
     <ClCompile Include="MyProfiler.cpp" />
@@ -290,7 +295,14 @@
     <Midl Include="DotNetHooker.idl" />
   </ItemGroup>
   <ItemGroup>
-    <MASM Include="trampoline.asm" />
+    <MASM Include="trampoline32.asm">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </MASM>
+    <MASM Include="trampoline64.asm">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+    </MASM>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -52,6 +52,9 @@
     <ClInclude Include="LogFile.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="DummyProfiler.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="DotNetHooker.cpp">
@@ -78,6 +81,9 @@
     <ClCompile Include="LogFile.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="DummyProfiler.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="DotNetHooker.rc">
@@ -101,7 +107,10 @@
     </Midl>
   </ItemGroup>
   <ItemGroup>
-    <MASM Include="trampoline.asm">
+    <MASM Include="trampoline64.asm">
+      <Filter>Source Files</Filter>
+    </MASM>
+    <MASM Include="trampoline32.asm">
       <Filter>Source Files</Filter>
     </MASM>
   </ItemGroup>

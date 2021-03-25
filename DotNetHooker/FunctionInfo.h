@@ -10,8 +10,12 @@
 class FunctionInfo
 {
 public:
-    FunctionInfo(_In_ const std::wstring& functionName) :
-        functionName(functionName)
+    FunctionInfo(
+        _In_ const std::wstring& FunctionName,
+        _In_ bool ShouldDumpArgs
+    ) :
+        functionName(FunctionName),
+        shouldDumpArgs(ShouldDumpArgs)
     {
     }
 
@@ -32,6 +36,11 @@ public:
         _In_ IMetaDataImport* MetaData
     );
 
+    bool GetShouldDumpArgs()
+    {
+        return shouldDumpArgs;
+    }
+
 private:
     HRESULT ParseType(
         _In_ PCCOR_SIGNATURE& Signature,
@@ -51,6 +60,7 @@ private:
     }
 
     std::wstring functionName;
+    bool shouldDumpArgs;
     std::vector<std::shared_ptr<IArgumentParser>> argumentParsers;
 };
 

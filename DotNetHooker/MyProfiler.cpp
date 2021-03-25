@@ -5,7 +5,9 @@
 #include "trampoline.h"
 #include <string>
 #include <windows.h>
+#include <string.h>
 
+const WCHAR* DNH_ARGUMENT_FILTER_ENV_VAR = L"DNH_ARGUMENT_FILTER";
 
 CMyProfiler* gMyProfiler = nullptr;
 
@@ -75,17 +77,14 @@ void CMyProfiler::OnEnter(
 
     LONG currentLineNumber = logFile.Log(finalLine);
 
-    // TODO: replace find with filters
-    if (finalLine.find(L"Assembly.Load") != std::wstring::npos)
+    if (funcInfo->GetShouldDumpArgs())
     {
         hres = DumpFunctionArguments(funcInfo, argumentInfo, currentLineNumber);
         if (FAILED(hres))
         {
             logFile.LogError(L"DumpFunctionArguments", hres);
         }
-        
     }
-    
 }
 
 extern "C" void __stdcall FunctionLeaveHook(
@@ -191,12 +190,10 @@ UINT_PTR CMyProfiler::OnFunctionMap(
     std::wstring fullmethodName = GetClassNameById(classId);
     fullmethodName += L".";
     fullmethodName += methodNameBuf;
+    bool shouldDumpArgs = ShouldDumpArgsForFunction(fullmethodName);
+    auto funcInfo = std::make_shared<FunctionInfo>(fullmethodName, shouldDumpArgs);
 
-    auto funcInfo = std::make_shared<FunctionInfo>(fullmethodName);
-
-    // TODO: replace find with filters
-    // so that user can decide which function's arguments will be dumped
-    if (fullmethodName.find(L"Assembly.Load") != std::wstring::npos)
+    if (shouldDumpArgs)
     {
         hres = funcInfo->ParseFunctionSignature(methodSignature, methodSignatureSize, profilerInfo, metaDataImport);
         metaDataImport->Release();
@@ -369,8 +366,6 @@ HRESULT CMyProfiler::ResolveClassName(
 }
 
 
-// CMyProfiler
-
 HRESULT STDMETHODCALLTYPE CMyProfiler::Initialize(
     /* [in] */ IUnknown* pICorProfilerInfoUnk)
 {
@@ -409,6 +404,10 @@ HRESULT STDMETHODCALLTYPE CMyProfiler::Initialize(
         return hres;
     }
 
+    ParseArgumentDumpingFilters();
+
+    DeleteProfilerEnvirionmentVars();
+
     return S_OK;
 };
 
@@ -421,104 +420,15 @@ HRESULT STDMETHODCALLTYPE CMyProfiler::Shutdown(void)
     return S_OK;
 };
 
-#pragma warning(push)
-#pragma warning(disable:4100) // disable unreferenced formal parameter as there is a lot of it here :)
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::AppDomainCreationStarted(
-    /* [in] */ AppDomainID appDomainId)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::AppDomainCreationFinished(
-    /* [in] */ AppDomainID appDomainId,
-    /* [in] */ HRESULT hrStatus)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::AppDomainShutdownStarted(
-    /* [in] */ AppDomainID appDomainId)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::AppDomainShutdownFinished(
-    /* [in] */ AppDomainID appDomainId,
-    /* [in] */ HRESULT hrStatus)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::AssemblyLoadStarted(
-    /* [in] */ AssemblyID assemblyId)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::AssemblyLoadFinished(
-    /* [in] */ AssemblyID assemblyId,
-    /* [in] */ HRESULT hrStatus)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::AssemblyUnloadStarted(
-    /* [in] */ AssemblyID assemblyId)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::AssemblyUnloadFinished(
-    /* [in] */ AssemblyID assemblyId,
-    /* [in] */ HRESULT hrStatus)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::ModuleLoadStarted(
-    /* [in] */ ModuleID moduleId)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::ModuleLoadFinished(
-    /* [in] */ ModuleID moduleId,
-    /* [in] */ HRESULT hrStatus)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::ModuleUnloadStarted(
-    /* [in] */ ModuleID moduleId)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::ModuleUnloadFinished(
-    /* [in] */ ModuleID moduleId,
-    /* [in] */ HRESULT hrStatus)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::ModuleAttachedToAssembly(
-    /* [in] */ ModuleID moduleId,
-    /* [in] */ AssemblyID AssemblyId)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::ClassLoadStarted(
-    /* [in] */ ClassID classId)
-{
-    return S_OK;
-};
-
 HRESULT STDMETHODCALLTYPE CMyProfiler::ClassLoadFinished(
     /* [in] */ ClassID classId,
     /* [in] */ HRESULT hrStatus)
 {
+    if (FAILED(hrStatus))
+    {
+        return S_OK;
+    }
+
     std::wstring className;
     HRESULT hres = ResolveClassName(classId, className);
     if (FAILED(hres))
@@ -531,392 +441,44 @@ HRESULT STDMETHODCALLTYPE CMyProfiler::ClassLoadFinished(
     return S_OK;
 };
 
-HRESULT STDMETHODCALLTYPE CMyProfiler::ClassUnloadStarted(
-    /* [in] */ ClassID classId)
+void CMyProfiler::ParseArgumentDumpingFilters()
 {
-    return S_OK;
-};
+    WCHAR envVarBuf[1024];
+    DWORD size = GetEnvironmentVariableW(DNH_ARGUMENT_FILTER_ENV_VAR, envVarBuf, 1024);
+    if (size == 0)
+    {
+        return;
+    }
 
-HRESULT STDMETHODCALLTYPE CMyProfiler::ClassUnloadFinished(
-    /* [in] */ ClassID classId,
-    /* [in] */ HRESULT hrStatus)
+    WCHAR* separator = L";";
+    WCHAR* context = nullptr;
+    WCHAR* currentToken = wcstok_s(envVarBuf, separator, &context);
+    while (currentToken)
+    {
+        argDumpingFilters.emplace_back(currentToken);
+        currentToken = wcstok_s(nullptr, separator, &context);
+    }
+}
+
+bool CMyProfiler::ShouldDumpArgsForFunction(
+    _In_ const std::wstring& FunctionName
+)
 {
-    return S_OK;
-};
+    for (const std::wstring& monitoredFunction : argDumpingFilters)
+    {
+        if (FunctionName.find(monitoredFunction) != std::wstring::npos)
+        {
+            return true;
+        }
+    }
 
-HRESULT STDMETHODCALLTYPE CMyProfiler::FunctionUnloadStarted(
-    /* [in] */ FunctionID functionId)
+    return false;
+}
+
+void CMyProfiler::DeleteProfilerEnvirionmentVars()
 {
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::JITCompilationStarted(
-    /* [in] */ FunctionID functionId,
-    /* [in] */ BOOL fIsSafeToBlock)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::JITCompilationFinished(
-    /* [in] */ FunctionID functionId,
-    /* [in] */ HRESULT hrStatus,
-    /* [in] */ BOOL fIsSafeToBlock)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::JITCachedFunctionSearchStarted(
-    /* [in] */ FunctionID functionId,
-    /* [out] */ BOOL* pbUseCachedFunction)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::JITCachedFunctionSearchFinished(
-    /* [in] */ FunctionID functionId,
-    /* [in] */ COR_PRF_JIT_CACHE result)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::JITFunctionPitched(
-    /* [in] */ FunctionID functionId)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::JITInlining(
-    /* [in] */ FunctionID callerId,
-    /* [in] */ FunctionID calleeId,
-    /* [out] */ BOOL* pfShouldInline)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::ThreadCreated(
-    /* [in] */ ThreadID threadId)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::ThreadDestroyed(
-    /* [in] */ ThreadID threadId)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::ThreadAssignedToOSThread(
-    /* [in] */ ThreadID managedThreadId,
-    /* [in] */ DWORD osThreadId)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::RemotingClientInvocationStarted(void)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::RemotingClientSendingMessage(
-    /* [in] */ GUID* pCookie,
-    /* [in] */ BOOL fIsAsync)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::RemotingClientReceivingReply(
-    /* [in] */ GUID* pCookie,
-    /* [in] */ BOOL fIsAsync)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::RemotingClientInvocationFinished(void)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::RemotingServerReceivingMessage(
-    /* [in] */ GUID* pCookie,
-    /* [in] */ BOOL fIsAsync)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::RemotingServerInvocationStarted(void)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::RemotingServerInvocationReturned(void)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::RemotingServerSendingReply(
-    /* [in] */ GUID* pCookie,
-    /* [in] */ BOOL fIsAsync)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::UnmanagedToManagedTransition(
-    /* [in] */ FunctionID functionId,
-    /* [in] */ COR_PRF_TRANSITION_REASON reason)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::ManagedToUnmanagedTransition(
-    /* [in] */ FunctionID functionId,
-    /* [in] */ COR_PRF_TRANSITION_REASON reason)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::RuntimeSuspendStarted(
-    /* [in] */ COR_PRF_SUSPEND_REASON suspendReason)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::RuntimeSuspendFinished(void)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::RuntimeSuspendAborted(void)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::RuntimeResumeStarted(void)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::RuntimeResumeFinished(void)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::RuntimeThreadSuspended(
-    /* [in] */ ThreadID threadId)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::RuntimeThreadResumed(
-    /* [in] */ ThreadID threadId)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::MovedReferences(
-    /* [in] */ ULONG cMovedObjectIDRanges,
-    /* [size_is][in] */ ObjectID oldObjectIDRangeStart[],
-    /* [size_is][in] */ ObjectID newObjectIDRangeStart[],
-    /* [size_is][in] */ ULONG cObjectIDRangeLength[])
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::ObjectAllocated(
-    /* [in] */ ObjectID objectId,
-    /* [in] */ ClassID classId)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::ObjectsAllocatedByClass(
-    /* [in] */ ULONG cClassCount,
-    /* [size_is][in] */ ClassID classIds[],
-    /* [size_is][in] */ ULONG cObjects[])
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::ObjectReferences(
-    /* [in] */ ObjectID objectId,
-    /* [in] */ ClassID classId,
-    /* [in] */ ULONG cObjectRefs,
-    /* [size_is][in] */ ObjectID objectRefIds[])
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::RootReferences(
-    /* [in] */ ULONG cRootRefs,
-    /* [size_is][in] */ ObjectID rootRefIds[])
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::ExceptionThrown(
-    /* [in] */ ObjectID thrownObjectId)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::ExceptionSearchFunctionEnter(
-    /* [in] */ FunctionID functionId)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::ExceptionSearchFunctionLeave(void)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::ExceptionSearchFilterEnter(
-    /* [in] */ FunctionID functionId)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::ExceptionSearchFilterLeave(void)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::ExceptionSearchCatcherFound(
-    /* [in] */ FunctionID functionId)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::ExceptionOSHandlerEnter(
-    /* [in] */ UINT_PTR __unused)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::ExceptionOSHandlerLeave(
-    /* [in] */ UINT_PTR __unused)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::ExceptionUnwindFunctionEnter(
-    /* [in] */ FunctionID functionId)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::ExceptionUnwindFunctionLeave(void)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::ExceptionUnwindFinallyEnter(
-    /* [in] */ FunctionID functionId)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::ExceptionUnwindFinallyLeave(void)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::ExceptionCatcherEnter(
-    /* [in] */ FunctionID functionId,
-    /* [in] */ ObjectID objectId)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::ExceptionCatcherLeave(void)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::COMClassicVTableCreated(
-    /* [in] */ ClassID wrappedClassId,
-    /* [in] */ REFGUID implementedIID,
-    /* [in] */ void* pVTable,
-    /* [in] */ ULONG cSlots)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::COMClassicVTableDestroyed(
-    /* [in] */ ClassID wrappedClassId,
-    /* [in] */ REFGUID implementedIID,
-    /* [in] */ void* pVTable)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::ExceptionCLRCatcherFound(void)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::ExceptionCLRCatcherExecute(void)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::ThreadNameChanged(
-    /* [in] */ ThreadID threadId,
-    /* [in] */ ULONG cchName,
-    /* [annotation][in] */
-    _In_reads_opt_(cchName)  WCHAR name[])
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::GarbageCollectionStarted(
-    /* [in] */ int cGenerations,
-    /* [size_is][in] */ BOOL generationCollected[],
-    /* [in] */ COR_PRF_GC_REASON reason)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::SurvivingReferences(
-    /* [in] */ ULONG cSurvivingObjectIDRanges,
-    /* [size_is][in] */ ObjectID objectIDRangeStart[],
-    /* [size_is][in] */ ULONG cObjectIDRangeLength[])
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::GarbageCollectionFinished(void)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::FinalizeableObjectQueued(
-    /* [in] */ DWORD finalizerFlags,
-    /* [in] */ ObjectID objectID)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::RootReferences2(
-    /* [in] */ ULONG cRootRefs,
-    /* [size_is][in] */ ObjectID rootRefIds[],
-    /* [size_is][in] */ COR_PRF_GC_ROOT_KIND rootKinds[],
-    /* [size_is][in] */ COR_PRF_GC_ROOT_FLAGS rootFlags[],
-    /* [size_is][in] */ UINT_PTR rootIds[])
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::HandleCreated(
-    /* [in] */ GCHandleID handleId,
-    /* [in] */ ObjectID initialObjectId)
-{
-    return S_OK;
-};
-
-HRESULT STDMETHODCALLTYPE CMyProfiler::HandleDestroyed(
-    /* [in] */ GCHandleID handleId)
-{
-    return S_OK;
-};
-
-#pragma warning(pop)
+    // delete profiler related env vars so malware has harder time finding if it runs under profiler
+    SetEnvironmentVariableW(L"COR_ENABLE_PROFILING", nullptr);
+    SetEnvironmentVariableW(L"COR_PROFILER", nullptr);
+    SetEnvironmentVariableW(DNH_ARGUMENT_FILTER_ENV_VAR, nullptr);
+}
