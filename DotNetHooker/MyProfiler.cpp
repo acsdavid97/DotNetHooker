@@ -211,7 +211,8 @@ UINT_PTR CMyProfiler::OnFunctionMap(
     *pbHookFunction = true;
 
     // BUG: for same funcionID different mapping is returned, in case OnFunctionMap is called from different threads.
-    // Profilers should be tolerant of cases where multiple threads of a profiled application are calling the same method / function simultaneously.In such cases, the profiler may receive multiple FunctionIDMapper callbacks for the same FunctionID.The profiler should be certain to return the same values from this callback when it is called multiple times with the same FunctionID.
+    // Profilers should be tolerant of cases where multiple threads of a profiled application are calling the same method / function simultaneously.
+    // In such cases, the profiler may receive multiple FunctionIDMapper callbacks for the same FunctionID.The profiler should be certain to return the same values from this callback when it is called multiple times with the same FunctionID.
     // https://docs.microsoft.com/en-us/previous-versions/dotnet/netframework-4.0/aa964957(v=vs.100)
 
     return AddFunctionName(funcInfo);
@@ -261,7 +262,7 @@ HRESULT CMyProfiler::DumpFunctionArguments(
         }
 
         std::wstringstream fileName;
-        fileName << CurrentLineNumber << L"_" << argumentIndex;
+        fileName << L"PID_" << pid << L"_Line_" << CurrentLineNumber << L"_Argc_" << argumentIndex << L".dnh";
         std::wstring fileNameStr = fileName.str();
         hres = LogFile::DumpDataToFile(fileNameStr.c_str(), parsedArgument.DataStart, parsedArgument.DataSize);
         if (FAILED(hres))
@@ -371,7 +372,11 @@ HRESULT STDMETHODCALLTYPE CMyProfiler::Initialize(
 {
     gMyProfiler = this;
 
-    HRESULT hres = logFile.StartLog(L"DotNetHooker.log");
+    std::wstringstream logNameStream;
+    pid = GetCurrentProcessId();
+    logNameStream << L"DotNetHooker_" << pid << L".log";
+
+    HRESULT hres = logFile.StartLog(logNameStream.str());
     if (FAILED(hres))
     {
         return hres;
@@ -480,5 +485,6 @@ void CMyProfiler::DeleteProfilerEnvirionmentVars()
     // delete profiler related env vars so malware has harder time finding if it runs under profiler
     SetEnvironmentVariableW(L"COR_ENABLE_PROFILING", nullptr);
     SetEnvironmentVariableW(L"COR_PROFILER", nullptr);
+    SetEnvironmentVariableW(L"COMPlus_ProfAPI_ProfilerCompatibilitySetting", nullptr);
     SetEnvironmentVariableW(DNH_ARGUMENT_FILTER_ENV_VAR, nullptr);
 }

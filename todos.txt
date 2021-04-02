@@ -1,5 +1,3 @@
-support x86 as well by creating trampolines in x86 asm
-
 idea:
     try to implement filters (include and exclude)
     for example ignoring .ctors and methods starting with get_ and set_

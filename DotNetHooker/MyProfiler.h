@@ -140,6 +140,7 @@ private:
     std::vector<std::wstring> argDumpingFilters;
 
     LogFile logFile;
+    DWORD pid;
 };
 
 OBJECT_ENTRY_AUTO(__uuidof(MyProfiler), CMyProfiler)
