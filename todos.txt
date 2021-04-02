@@ -1,6 +1,0 @@
-idea:
-    try to implement filters (include and exclude)
-    for example ignoring .ctors and methods starting with get_ and set_
-
-code cleanup:
-    remove all throw exceptions and replace them with statuses or log error
