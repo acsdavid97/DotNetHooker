@@ -8,6 +8,8 @@
 #include <string.h>
 
 const WCHAR* DNH_ARGUMENT_FILTER_ENV_VAR = L"DNH_ARGUMENT_FILTER";
+const WCHAR* DNH_FUNC_FILTER_INCLUDE_ENV_VAR = L"DNH_FUNC_FILTER_INCLUDE";
+const WCHAR* DNH_FUNC_FILTER_EXCLUDE_ENV_VAR = L"DNH_FUNC_FILTER_EXCLUDE";
 
 CMyProfiler* gMyProfiler = nullptr;
 
@@ -190,6 +192,13 @@ UINT_PTR CMyProfiler::OnFunctionMap(
     std::wstring fullmethodName = GetClassNameById(classId);
     fullmethodName += L".";
     fullmethodName += methodNameBuf;
+
+    if (!IsFunctionMonitored(fullmethodName))
+    {
+        // user does not want monitoring of this function
+        return 0;
+    }
+
     bool shouldDumpArgs = ShouldDumpArgsForFunction(fullmethodName);
     auto funcInfo = std::make_shared<FunctionInfo>(fullmethodName, shouldDumpArgs);
 
@@ -409,6 +418,7 @@ HRESULT STDMETHODCALLTYPE CMyProfiler::Initialize(
         return hres;
     }
 
+    ParseFunctionNameFilters();
     ParseArgumentDumpingFilters();
 
     DeleteProfilerEnvirionmentVars();
@@ -446,10 +456,44 @@ HRESULT STDMETHODCALLTYPE CMyProfiler::ClassLoadFinished(
     return S_OK;
 };
 
+void CMyProfiler::ParseFunctionNameFilters()
+{
+    TokenizeEnvVar(DNH_FUNC_FILTER_INCLUDE_ENV_VAR, functionIncludeFilters);
+    TokenizeEnvVar(DNH_FUNC_FILTER_EXCLUDE_ENV_VAR, functionExcludeFilters);
+}
+
+bool CMyProfiler::IsFunctionMonitored(
+    _In_ const std::wstring& FunctionName
+)
+{
+    if (FindFunctionNameInArray(FunctionName, functionExcludeFilters))
+    {
+        // explicit deny by exclude filters.
+        return false;
+    }
+
+    if (functionIncludeFilters.empty())
+    {
+        // empty include filters means monitor all
+        return true;
+    }
+
+    // not empty include filters means monitor only the explicitly allowed.
+    return FindFunctionNameInArray(FunctionName, functionIncludeFilters);
+}
+
 void CMyProfiler::ParseArgumentDumpingFilters()
 {
+    TokenizeEnvVar(DNH_ARGUMENT_FILTER_ENV_VAR, argDumpingFilters);
+}
+
+void CMyProfiler::TokenizeEnvVar(
+    LPCWSTR EnvVar,
+    std::vector<std::wstring>& Tokens
+)
+{
     WCHAR envVarBuf[1024];
-    DWORD size = GetEnvironmentVariableW(DNH_ARGUMENT_FILTER_ENV_VAR, envVarBuf, 1024);
+    DWORD size = GetEnvironmentVariableW(EnvVar, envVarBuf, 1024);
     if (size == 0)
     {
         return;
@@ -460,7 +504,7 @@ void CMyProfiler::ParseArgumentDumpingFilters()
     WCHAR* currentToken = wcstok_s(envVarBuf, separator, &context);
     while (currentToken)
     {
-        argDumpingFilters.emplace_back(currentToken);
+        Tokens.emplace_back(currentToken);
         currentToken = wcstok_s(nullptr, separator, &context);
     }
 }
@@ -469,7 +513,15 @@ bool CMyProfiler::ShouldDumpArgsForFunction(
     _In_ const std::wstring& FunctionName
 )
 {
-    for (const std::wstring& monitoredFunction : argDumpingFilters)
+    return FindFunctionNameInArray(FunctionName, argDumpingFilters);
+}
+
+bool CMyProfiler::FindFunctionNameInArray(
+    _In_ const std::wstring& FunctionName,
+    const std::vector<std::wstring>& Array
+)
+{
+    for (const std::wstring& monitoredFunction : Array)
     {
         if (FunctionName.find(monitoredFunction) != std::wstring::npos)
         {
@@ -487,4 +539,6 @@ void CMyProfiler::DeleteProfilerEnvirionmentVars()
     SetEnvironmentVariableW(L"COR_PROFILER", nullptr);
     SetEnvironmentVariableW(L"COMPlus_ProfAPI_ProfilerCompatibilitySetting", nullptr);
     SetEnvironmentVariableW(DNH_ARGUMENT_FILTER_ENV_VAR, nullptr);
+    SetEnvironmentVariableW(DNH_FUNC_FILTER_INCLUDE_ENV_VAR, nullptr);
+    SetEnvironmentVariableW(DNH_FUNC_FILTER_EXCLUDE_ENV_VAR, nullptr);
 }

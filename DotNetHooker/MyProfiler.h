@@ -119,6 +119,12 @@ private:
         _In_ ClassID ClassId
     );
 
+    void ParseFunctionNameFilters();
+
+    bool IsFunctionMonitored(
+        _In_ const std::wstring& FunctionName
+    );
+
     void ParseArgumentDumpingFilters();
 
     bool ShouldDumpArgsForFunction(
@@ -127,6 +133,15 @@ private:
     
     void DeleteProfilerEnvirionmentVars();
 
+    void TokenizeEnvVar(
+        LPCWSTR EnvVar,
+        std::vector<std::wstring>& Tokens
+    );
+
+    bool FindFunctionNameInArray(
+        _In_ const std::wstring& FunctionName,
+        const std::vector<std::wstring>& Array
+    );
 
     ICorProfilerInfo2* profilerInfo = nullptr;
     
@@ -136,8 +151,12 @@ private:
 
     mutable std::shared_mutex classMapLock;
     std::map<ClassID, std::wstring> classIdToName;
+    
+    std::vector<std::wstring> functionIncludeFilters;
+    std::vector<std::wstring> functionExcludeFilters;
 
     std::vector<std::wstring> argDumpingFilters;
+
 
     LogFile logFile;
     DWORD pid;
