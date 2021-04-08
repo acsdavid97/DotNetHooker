@@ -53,5 +53,3 @@ https://redcanary.com/blog/cor_profiler-for-persistence/
     - filtering
     - searching
     - collapsing
-- Include and exclude filters for monitored functions, to reduce verbosity/size of log file.
-    - similar idea: implement different logging levels. Ex: .ctors and get/seters on trace, while rest on info
