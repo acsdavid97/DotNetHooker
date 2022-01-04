@@ -237,6 +237,7 @@ HRESULT CMyProfiler::DumpFunctionArguments(
     PBYTE currentArgumentPointer = nullptr;
     PBYTE currentRangeEnd = nullptr;
     DWORD argumentIndex = 0;
+
     for (const auto& parser : FunctionInfo->GetArgumentParsers())
     {
         argumentIndex++;

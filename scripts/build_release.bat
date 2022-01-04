@@ -1,6 +1,6 @@
 :: run this from developer console of visual studio
 
-set VERSION=v0.0.2
+set VERSION=v0.0.3
 
 set SCRIPT_DIR=%~dp0
 set ROOT_DIR=%SCRIPT_DIR%\..\

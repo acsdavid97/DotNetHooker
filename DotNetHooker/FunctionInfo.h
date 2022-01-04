@@ -41,6 +41,11 @@ public:
         return shouldDumpArgs;
     }
 
+    bool IsInstanceMethod()
+    {
+        return hasThis;
+    }
+
 private:
     HRESULT ParseType(
         _In_ PCCOR_SIGNATURE& Signature,
@@ -62,6 +67,7 @@ private:
     std::wstring functionName;
     bool shouldDumpArgs;
     std::vector<std::shared_ptr<IArgumentParser>> argumentParsers;
+    bool hasThis = false;
 };
 
 

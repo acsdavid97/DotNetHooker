@@ -38,6 +38,11 @@ HRESULT FunctionInfo::ParseFunctionSignature(
         return E_NOTIMPL;
     }
 
+    if (callingConv & IMAGE_CEE_CS_CALLCONV_HASTHIS)
+    {
+        hasThis = true;
+    }
+
     if (currentSig >= signatureEnd)
     {
         return E_INVALIDARG;
@@ -49,6 +54,13 @@ HRESULT FunctionInfo::ParseFunctionSignature(
     if (FAILED(hres))
     {
         return hres;
+    }
+
+    if (hasThis)
+    {
+        // instance methods receive as first param "this", which we do not want to dump in most cases.
+        // so we add an argument of type "Class" that will result in a dummy ptr parser, that skips it.
+        AddArgumentType(ArgumentType::Class, ProfilerInfo);
     }
 
     for (ULONG argIndex = 0; argIndex < argumentCount; argIndex++)
